@@ -14,6 +14,17 @@ The cluster is structured as follows:
 * Docker
 * kubectl
 * kind
+* GH CLI
+* 1xH100 Lambda on-demand instance
+
+
+### Setup
+
+```bash
+git clone git@github.com:sherifnada/inferno.git
+```
+
+
 
 ## Quick Start
 ```bash
