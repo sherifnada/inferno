@@ -21,6 +21,23 @@ First, ssh to your on-demand instance.
 
 Then install [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#install-using-native-package-management) and the [GH CLI](https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
 
+## Enable MIG
+
+Before we do anything, we need to enable Multi-instance GPU mode (MIG). This allows running multiple models on the same GPU. 
+
+```bash
+# turn MIG mode on
+sudo nvidia-smi -i 0 -mig 1
+
+# Create 4g.40gb and 3g.40gb slices.
+sudo nvidia-smi mig -cgi 9,5 -C
+
+# Verify it worked: should list GPU 0: MIG 3g.40gb and 4g.40gb
+nvidia-smi -L
+```
+
+## Setup instance
+
 Install K3s and `jq`:
 ```bash
 # Install K3s
@@ -108,20 +125,6 @@ You should see a response like:
 ```
 
 Then turn off the docker container using `docker stop`
-
-## Enable MIG
-
-Before we do anything, we need to enable Multi-instance GPU mode (MIG). This allows running multiple models on the same GPU. 
-
-```bash
-# turn MIG mode on
-sudo nvidia-smi -i 0 -mig 1
-
-# Create two 4g/40gb slices.
-sudo nvidia-smi mig -cgi 19,19 -C
-
-# Verify it worked: should list GPU 0: MIG 1g...etc. twice
-```
 
 
 ## Setup Kube Cluster
