@@ -1,38 +1,37 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tinyllama-vllm
+  name: qwen2-5-vl-7b-vllm
   labels:
-    app: tinyllama-vllm
+    app: qwen2-5-vl-7b-vllm
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: tinyllama-vllm
+      app: qwen2-5-vl-7b-vllm
   template:
     metadata:
       labels:
-        app: tinyllama-vllm
+        app: qwen2-5-vl-7b-vllm
     spec:
-      # Request one GPU so the NVIDIA runtime is used
       containers:
         - name: vllm
           image: vllm/vllm-openai:latest
           args:
             - "--model"
-            - "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+            - "Qwen/Qwen2.5-VL-7B-Instruct"
             - "--disable-log-requests"
           env:
-            - name: HUGGINGFACE_HUB_TOKEN
+            - name: HUGGING_FACE_HUB_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-credentials
-                  key: HUGGINGFACE_HUB_TOKEN
+                  key: HUGGING_FACE_HUB_TOKEN
           ports:
             - containerPort: 8000
           resources:
             limits:
-              nvidia.com/mig-3g.40gb: 1
+              nvidia.com/mig-4g.40gb: 1
           volumeMounts:
             - name: hf-cache
               mountPath: /root/.cache/huggingface
@@ -48,10 +47,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tinyllama
+  name: qwen2-5-vl-7b
 spec:
   selector:
-    app: tinyllama-vllm
+    app: qwen2-5-vl-7b-vllm
   ports:
     - port: 8000
       targetPort: 8000

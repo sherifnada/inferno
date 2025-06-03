@@ -5,9 +5,8 @@ A trial by fire in running an inference backend
 This is a local kube emulation of an inference cluster.
 
 The cluster is structured as follows: 
-- One VLLM deployment per LLM (TinyLlama-1.1B-Chat and the bimodal Molmo 7B-D model)
+- One VLLM deployment per LLM (TinyLlama-1.1B-Chat and the bimodal Qwen2.5-VL-7B)
 - One FastAPI deployment that receives requests and sits in front of the VLLM servers
-- Dashboard containing GPU utilization, request latency, volume, and throughput
 
 ## Prereqs
 * Docker
@@ -90,7 +89,7 @@ k3s kubectl create secret generic hf-credentials \
       -n default
 
 # Deploy Tinyllama and port-forward it so it's available outside the cluster
-k3s kubectl apply -f k8s/tinyllama-vllm.yaml
+k3s kubectl apply -f k8s/models/tinyllama-vllm.yaml
 
 # Make sure the pod started correctly
 k3s kubectl get pods -w
@@ -111,15 +110,75 @@ curl -X POST http://localhost:8000/v1/chat/completions   -H "Content-Type: appli
   }' | jq
 ```
 
-### Molmo 7B-D
+### Qwen2.5 VL 7B
+This is a bimodal LLM so we can play around with image based inference as well.
+
 ```bash
-k3s kubectl apply -f k8s/molmo-7b-d-vllm.yaml
+k3s kubectl apply -f k8s/models/qwen2.5-vl-7b-vllm.yaml
 
 # watch until Running
 k3s kubectl get pods -w
 
 # forward the new service on a second tmux pane
-k3s kubectl port-forward service/molmo-7b-d 8001:8000
+k3s kubectl port-forward service/qwen2-5-vl-7b 8001:8000
 ```
 
-Again now open a new tmux window using `ctrl+b` then `c`, then smoke test that
+Again now open a new tmux session using `ctrl-b` then `c` and smoke test the model is working:
+
+```bash
+# Test the multimodal model is working
+curl -X POST http://localhost:8001/v1/chat/completions   -H "Content-Type: application/json"   -d '{
+    "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+    "messages": [
+      {"role": "user", "content": [
+        {
+          "type": "text",
+          "text": "Describe this image"
+        }, 
+        {
+          "type": "image_url",
+          "image_url": {"url": "https://placecats.com/neo/300/200.jpeg"}
+        }
+      ]}
+    ],
+    "temperature": 0.0,
+    "max_tokens": 20
+  }' | jq
+```
+
+## Deploy FastAPI gateway
+This component is here as a demonstrate having an "app layer" in front of our compute deployments where you could do anything like caching, custom batching, auth, billing, custom telemtry, feature flagging, whatever. The component in this repo just proxies requests and does very basic error handling, but you can imagine how it could do a lot more.
+
+First, build the server image and make it available to k3s: 
+```bash
+sudo docker build -t fastapi-gateway:local .
+sudo docker save fastapi-gateway:local | sudo k3s ctr images import -
+```
+
+Then run it: 
+
+```bash
+k3s kubectl apply -f k8s/fastapi-gateway.yaml
+k3s kubectl get pods -w
+k3s kubectl port-forward service/fast-api-gateway 8080:80
+```
+
+Now test that it's running correctly: 
+
+```bash
+curl -X POST http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "model":"TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "messages":[{"role":"user","content":"Paris?"}],
+  "temperature":0.0,
+  "max_tokens":16
+}' | jq .
+
+curl -X POST http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "model":"Qwen/Qwen2.5-VL-7B-Instruct",
+  "messages":[{"role":"user","content":"say hello"}],
+  "temperature":0.0,
+  "max_tokens":16
+}' | jq .
+```
+
+At this point, you should stop port forwarding to the vLLM servers directly and use the fastapi gateway. 

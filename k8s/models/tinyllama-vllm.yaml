@@ -1,25 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: molmo-7b-d-vllm
+  name: tinyllama-vllm
   labels:
-    app: molmo-7b-d-vllm
+    app: tinyllama-vllm
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: molmo-7b-d-vllm
+      app: tinyllama-vllm
   template:
     metadata:
       labels:
-        app: molmo-7b-d-vllm
+        app: tinyllama-vllm
     spec:
+      # Request one GPU so the NVIDIA runtime is used
       containers:
         - name: vllm
           image: vllm/vllm-openai:latest
           args:
             - "--model"
-            - "allenai/Molmo-7B-D-0924"
+            - "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
             - "--disable-log-requests"
           env:
             - name: HUGGING_FACE_HUB_TOKEN
@@ -31,7 +32,7 @@ spec:
             - containerPort: 8000
           resources:
             limits:
-              nvidia.com/mig-4g.40gb: 1
+              nvidia.com/mig-3g.40gb: 1
           volumeMounts:
             - name: hf-cache
               mountPath: /root/.cache/huggingface
@@ -47,10 +48,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: molmo-7b-d
+  name: tinyllama
 spec:
   selector:
-    app: molmo-7b-d-vllm
+    app: tinyllama-vllm
   ports:
     - port: 8000
       targetPort: 8000
