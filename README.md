@@ -1,4 +1,6 @@
 # INFERno
+![image](https://github.com/user-attachments/assets/3732a685-d074-4365-bb80-385beab12e57)
+
 A trial by fire in running an inference backend
 
 ## No but really, what is this?
@@ -8,7 +10,7 @@ The cluster is structured as follows:
 - One VLLM deployment per LLM (TinyLlama-1.1B-Chat and the bimodal Qwen2.5-VL-7B)
 - One FastAPI deployment that receives requests and sits in front of the VLLM servers
 
-
+![Screenshot 2025-06-03 at 9 19 43 AM](https://github.com/user-attachments/assets/a6fa80c4-b993-4f3c-a93e-486fe4916f30)
 
 ## Prereqs
 * Docker
@@ -182,5 +184,7 @@ curl -X POST http://localhost:8080/v1/chat/completions -H "Content-Type: applica
   "max_tokens":16
 }' | jq .
 ```
+
+Voila! We now have a working multi-model inference API running on K3s. Jubilate at will.
 
 At this point, you should stop port forwarding to the vLLM servers directly and use the fastapi gateway. 
