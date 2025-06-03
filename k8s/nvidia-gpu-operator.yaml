@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-operator
+---
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: gpu-operator
+  namespace: gpu-operator
+spec:
+  repo: https://helm.ngc.nvidia.com/nvidia
+  chart: gpu-operator
+  targetNamespace: gpu-operator
+  valuesContent: |-
+    mig:
+      strategy: mixed
+    operator:
+      defaultRuntime: containerd
+    nfd:
+      enabled: true

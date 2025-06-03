@@ -5,7 +5,7 @@ A trial by fire in running an inference backend
 This is a local kube emulation of an inference cluster.
 
 The cluster is structured as follows: 
-- One VLLM deployment per LLM (TinyLlama-1.1B-Chat and LLAMA 3.2 11B Vision Instruct)
+- One VLLM deployment per LLM (TinyLlama-1.1B-Chat and the bimodal Molmo 7B-D model)
 - One FastAPI deployment that receives requests and sits in front of the VLLM servers
 - Dashboard containing GPU utilization, request latency, volume, and throughput
 
@@ -20,21 +20,6 @@ The cluster is structured as follows:
 First, ssh to your on-demand instance.
 
 Then install [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#install-using-native-package-management) and the [GH CLI](https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
-
-## Enable MIG
-
-Before we do anything, we need to enable Multi-instance GPU mode (MIG). This allows running multiple models on the same GPU. 
-
-```bash
-# turn MIG mode on
-sudo nvidia-smi -i 0 -mig 1
-
-# Create 4g.40gb and 3g.40gb slices.
-sudo nvidia-smi mig -cgi 9,5 -C
-
-# Verify it worked: should list GPU 0: MIG 3g.40gb and 4g.40gb
-nvidia-smi -L
-```
 
 ## Setup instance
 
@@ -66,88 +51,52 @@ cp .env.example .env
 vim .env # then add the correct values
 ```
 
-Make sure everything works fine by running
-```bash
-sudo docker pull vllm/vllm-openai
-sudo docker run \
-  --gpus all \
-  --ipc=host \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  -p 8000:8000 \
-  --env-file .env \
-  vllm/vllm-openai --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-    --disable-log-requests
-```
-
-Then in a separate SSH terminal or tmux window run: 
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions   -H "Content-Type: application/json"   -d '{
-    "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    "messages": [
-      {"role": "user", "content": "What is the capital of France?"}
-    ],
-    "temperature": 0.0,
-    "max_tokens": 20
-  }' | jq
-```
-
-You should see a response like: 
-
-```bash
-{
-  "id": "chatcmpl-ae6e526144b7433fa38058d10b4c57c9",
-  "object": "chat.completion",
-  "created": 1748842347,
-  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "reasoning_content": null,
-        "content": "The capital of France is Paris.",
-        "tool_calls": []
-      },
-      "logprobs": null,
-      "finish_reason": "stop",
-      "stop_reason": null
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 23,
-    "total_tokens": 31,
-    "completion_tokens": 8,
-    "prompt_tokens_details": null
-  },
-  "prompt_logprobs": null,
-  "kv_transfer_params": null
-}
-```
-
-Then turn off the docker container using `docker stop`
-
-
 ## Setup Kube Cluster
 
 ```bash
 # Install GPU operator
 k3s kubectl apply -f k8s/nvidia-gpu-operator.yaml
+
+# Set the cluster MiG policy to 'mixed'
+k3s kubectl patch clusterpolicies.nvidia.com/cluster-policy --type=json -p='[{"op":"replace","path":"/spec/mig/strategy","value":"mixed"}]'
+
+# Define custom mig slices 3g.40gb and 4g.40gb
+k3s kubectl apply -f k8s/mig-config-map.yaml
+
+# overwrite the node label to create those mig slices
+k3s kubectl label --overwrite node $(k3s kubectl get nodes -o jsonpath='{.items[0].metadata.name}') nvidia.com/mig.config=all-4g3g
+
+# check the logs to see if it worked
+k3s kubectl -n gpu-operator logs -f ds/nvidia-mig-manager
+
+# Restart the daemonset to apply changes
+k3s kubectl -n gpu-operator rollout restart ds/nvidia-device-plugin-daemonset
+
+# Run nvidia-smi to check if the mig slices exist
+k3s kubectl -n gpu-operator exec $(kk -n gpu-operator get pods | grep 'mig-manager' | awk '{print $1}') -t -- nvidia-smi -L
 ```
 
 ## Deploy models
 
 ### TinyLlama
-**Note**: At this point we're going to run a few blocking operations. So it's best to run `tmux` then `Ctrl^B` then `C` to create a new window after we run each of these operations.
+**Note**: At this point we're going to run a few blocking operations. So it's best to run `tmux` then `ctrl^b` then `c` to create a new window after we run each of these operations.
 
 ```bash
 tmux # Open a new tmux session
 
+# Setup Hugging face API key as a secret
+k3s kubectl create secret generic hf-credentials \
+      --from-literal=HUGGING_FACE_HUB_TOKEN=$(grep '^HUGGING_FACE_HUB_TOKEN=' .env | cut -d '=' -f2-) \
+      -n default
+
 # Deploy Tinyllama and port-forward it so it's available outside the cluster
 k3s kubectl apply -f k8s/tinyllama-vllm.yaml
-k3s kubectl port-forward svc/tinyllama 8000:8000
 
-# Wait a few minutes for the model to download and run. 
-# You can monitor its status via k3s kubectl get pods.
+# Make sure the pod started correctly
+k3s kubectl get pods -w
+
+# Port forward so it's available outside the clusters
+k3s kubectl port-forward service/tinyllama 8000:8000
 
 # Now type ctrl^B then C to open a new tmux window
 
@@ -162,15 +111,15 @@ curl -X POST http://localhost:8000/v1/chat/completions   -H "Content-Type: appli
   }' | jq
 ```
 
-### Llama3 11B-Vision
+### Molmo 7B-D
 ```bash
-k3s kubectl apply -f k8s/llama11b-vllm.yaml
+k3s kubectl apply -f k8s/molmo-7b-d-vllm.yaml
 
 # watch until Running
 k3s kubectl get pods -w
 
 # forward the new service on a second tmux pane
-k3s kubectl port-forward svc/llama11b 8001:8000
+k3s kubectl port-forward service/molmo-7b-d 8001:8000
 ```
 
 Again now open a new tmux window using `ctrl+b` then `c`, then smoke test that

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinyllama-vllm
+  labels:
+    app: tinyllama-vllm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tinyllama-vllm
+  template:
+    metadata:
+      labels:
+        app: tinyllama-vllm
+    spec:
+      # Request one GPU so the NVIDIA runtime is used
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model"
+            - "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+            - "--disable-log-requests"
+          env:
+            - name: HUGGINGFACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-credentials
+                  key: HUGGINGFACE_HUB_TOKEN
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/mig-3g.40gb: 1
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
+      volumes:
+        - name: hf-cache
+          hostPath:
+            path: /home/ubuntu/.cache/huggingface
+
+---
+# -------------------------------------------------
+# Service: Stable DNS name inside the cluster
+# -------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinyllama
+spec:
+  selector:
+    app: tinyllama-vllm
+  ports:
+    - port: 8000
+      targetPort: 8000

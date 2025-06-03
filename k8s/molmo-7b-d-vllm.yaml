@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: molmo-7b-d-vllm
+  labels:
+    app: molmo-7b-d-vllm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: molmo-7b-d-vllm
+  template:
+    metadata:
+      labels:
+        app: molmo-7b-d-vllm
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model"
+            - "allenai/Molmo-7B-D-0924"
+            - "--disable-log-requests"
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-credentials
+                  key: HUGGING_FACE_HUB_TOKEN
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/mig-4g.40gb: 1
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
+      volumes:
+        - name: hf-cache
+          hostPath:
+            path: /home/ubuntu/.cache/huggingface
+
+---
+# -------------------------------------------------
+# Service: Stable DNS name inside the cluster
+# -------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: molmo-7b-d
+spec:
+  selector:
+    app: molmo-7b-d-vllm
+  ports:
+    - port: 8000
+      targetPort: 8000
