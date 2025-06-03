@@ -2,11 +2,13 @@
 A trial by fire in running an inference backend
 
 ## No but really, what is this?
-This is a local kube emulation of an inference cluster.
+This is a very simple toy example of running an inference cluster.
 
 The cluster is structured as follows: 
 - One VLLM deployment per LLM (TinyLlama-1.1B-Chat and the bimodal Qwen2.5-VL-7B)
 - One FastAPI deployment that receives requests and sits in front of the VLLM servers
+
+
 
 ## Prereqs
 * Docker
